@@ -1,0 +1,18 @@
+# Copier en ~/airzone-sniffer/bridge.ini puis : chmod 600 bridge.ini
+[mqtt]
+host = 192.168.1.X
+port = 1883
+user = airzone
+password = A_REMPLIR
+
+[bus]
+port = /dev/ttyUSB0
+# silence minimal (ms) du webserver avant d'émettre. Ses pauses normales durent ~0,8 s ;
+# toutes les 10 min (à xx:x0:01) il en fait une de ~0,23 s en plein cycle : rester au-dessus.
+silence_ms = 400
+# secondes entre deux relectures complètes des zones
+interval = 30
+
+[zones]
+# vide = détection automatique (zones 1 à 8 ayant un nom) ; sinon par ex. : 1,2,3,4,6
+liste =

@@ -1,0 +1,285 @@
+# Airzone Easyzone -> Home Assistant, on an M5Stack ATOM Lite + Tail485, next to the official webserver.
+# Port of airzone-sniffer/airzone_bridge.py. Register map: airzone-sniffer/LISEZMOI.md.
+substitutions:
+  # ATOM Lite + Tail485 (SKU T002), on the Grove port: TX G26, RX G32 (docs.m5stack.com PinMap
+  # and M5Stack's example). The SP485EEN switches direction by itself: no direction pin.
+  tx_pin: GPIO26
+  rx_pin: GPIO32
+
+esphome:
+  name: airzone
+  friendly_name: Airzone
+
+esp32:
+  board: m5stack-atom
+  # Arduino, like the ATOM's previous firmware: an OTA update then keeps the same partition layout.
+  framework:
+    type: arduino
+
+external_components:
+  - source:
+      type: local
+      path: components
+
+logger:
+  # the bus uses the ESP32's second UART; the USB log stays on the first one
+  level: INFO
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  ap:
+    ssid: Airzone secours
+
+captive_portal:
+
+uart:
+  id: bus
+  tx_pin: ${tx_pin}
+  rx_pin: ${rx_pin}
+  baud_rate: 19200
+  data_bits: 8
+  parity: EVEN
+  stop_bits: 1
+  rx_buffer_size: 1024
+
+airzone:
+  id: az
+  uart_id: bus
+  zones: [1, 2, 3, 4, 6]   # zone numbers of your installation (same as packages: below)
+  silence: 400ms
+  poll_interval: 30s
+  # Start read-only. Once the readings match the app, set to true to allow commands from Home Assistant.
+  writes_enabled: false
+
+packages:
+  # One line per zone of YOUR installation: its number (see the app or the bus) and the name to show in HA.
+  zone1: !include {file: modeles/zone.yaml, vars: {zone: 1, name: Salon}}
+  zone2: !include {file: modeles/zone.yaml, vars: {zone: 2, name: Cuisine}}
+  zone3: !include {file: modeles/zone.yaml, vars: {zone: 3, name: Chambre 1}}
+  zone4: !include {file: modeles/zone.yaml, vars: {zone: 4, name: Chambre 2}}
+  zone6: !include {file: modeles/zone.yaml, vars: {zone: 6, name: Bureau}}
+
+binary_sensor:
+  - platform: template
+    name: Bus Airzone
+    device_class: connectivity
+    entity_category: diagnostic
+    lambda: return id(az).online();
+  - platform: template
+    name: Ventilateur du capteur
+    device_class: running
+    lambda: return id(az).flag(0x2103, 0x0001);
+
+text_sensor:
+  - platform: template
+    name: Mode général
+    icon: mdi:hvac
+    update_interval: 30s
+    lambda: return id(az).system_mode();
+  - platform: template
+    name: Niveau de qualité
+    icon: mdi:air-filter
+    update_interval: 30s
+    lambda: return id(az).air_quality_level();
+
+# Air quality sensor block 0x2100 (identified against the app on 06/11/2026)
+sensor:
+  - platform: template
+    name: CO2
+    device_class: carbon_dioxide
+    state_class: measurement
+    unit_of_measurement: ppm
+    accuracy_decimals: 0
+    update_interval: 30s
+    lambda: return id(az).value(0x2107, 1, 250, 10000);
+  - platform: template
+    name: COV totaux
+    device_class: volatile_organic_compounds_parts
+    state_class: measurement
+    unit_of_measurement: ppb
+    accuracy_decimals: 0
+    update_interval: 30s
+    lambda: return id(az).value(0x2108, 1, 0, 10000);
+  - platform: template
+    name: PM2.5
+    device_class: pm25
+    state_class: measurement
+    unit_of_measurement: "µg/m³"
+    accuracy_decimals: 0
+    update_interval: 30s
+    lambda: return id(az).value(0x2105, 1, 0, 1000);
+  - platform: template
+    name: PM10
+    device_class: pm10
+    state_class: measurement
+    unit_of_measurement: "µg/m³"
+    accuracy_decimals: 0
+    update_interval: 30s
+    lambda: return id(az).value(0x2106, 1, 0, 1000);
+  - platform: template
+    name: Qualité de l'air humidité
+    device_class: humidity
+    state_class: measurement
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: 30s
+    lambda: return id(az).value(0x2109, 1, 0, 100);
+  - platform: template
+    name: Qualité de l'air température
+    device_class: temperature
+    state_class: measurement
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 30s
+    lambda: return id(az).value(0x210A, 0.1, -20, 60);
+  - platform: template
+    name: Pression
+    device_class: atmospheric_pressure
+    state_class: measurement
+    unit_of_measurement: hPa
+    accuracy_decimals: 0
+    update_interval: 30s
+    lambda: return id(az).value(0x210B, 1, 800, 1100);
+
+# App settings: one bit each, written by fn 0x16 mask write exactly as the app does
+switch:
+  - platform: template
+    name: LED du capteur
+    icon: mdi:led-on
+    entity_category: config
+    restore_mode: DISABLED   # never act at boot: the state is read from the bus
+    lambda: return id(az).flag(0x2101, 0x0100);
+    turn_on_action:
+      - lambda: id(az).mask_write(0x2101, 0x0100, true);
+    turn_off_action:
+      - lambda: id(az).mask_write(0x2101, 0x0100, false);
+  - platform: template
+    name: Ventilation cyclique
+    icon: mdi:fan-clock
+    entity_category: config
+    restore_mode: DISABLED   # never act at boot: the state is read from the bus
+    lambda: return id(az).flag(0x2101, 0x1000);
+    turn_on_action:
+      - lambda: id(az).mask_write(0x2101, 0x1000, true);
+    turn_off_action:
+      - lambda: id(az).mask_write(0x2101, 0x1000, false);
+  - platform: template
+    name: Free-cooling
+    icon: mdi:snowflake-thermometer
+    entity_category: config
+    restore_mode: DISABLED   # never act at boot: the state is read from the bus
+    lambda: return id(az).flag(0x2101, 0x4000);
+    turn_on_action:
+      - lambda: id(az).mask_write(0x2101, 0x4000, true);
+    turn_off_action:
+      - lambda: id(az).mask_write(0x2101, 0x4000, false);
+  - platform: template
+    name: Mode nuit
+    icon: mdi:weather-night
+    entity_category: config
+    restore_mode: DISABLED   # never act at boot: the state is read from the bus
+    lambda: return id(az).flag(0x2121, 0x0001);
+    turn_on_action:
+      - lambda: id(az).mask_write(0x2121, 0x0001, true);
+    turn_off_action:
+      - lambda: id(az).mask_write(0x2121, 0x0001, false);
+  - platform: template
+    name: Priorité QAI
+    icon: mdi:air-filter
+    entity_category: config
+    restore_mode: DISABLED   # never act at boot: the state is read from the bus
+    lambda: return id(az).flag(0x0038, 0x2000);
+    turn_on_action:
+      - lambda: id(az).mask_write(0x0038, 0x2000, true);
+    turn_off_action:
+      - lambda: id(az).mask_write(0x0038, 0x2000, false);
+
+# Settings with a value: a bit field each; ranges and steps are the app's, anything else is never sent
+number:
+  - platform: template
+    name: "Mode nuit : début"
+    icon: mdi:clock-start
+    entity_category: config
+    unit_of_measurement: h
+    min_value: 0
+    max_value: 23
+    step: 1
+    mode: box
+    update_interval: 30s
+    lambda: return id(az).field(0x2121, 0x007C);
+    set_action:
+      - lambda: id(az).field_write(0x2121, 0x007C, (int) x, 0, 23, 1);
+  - platform: template
+    name: "Mode nuit : fin"
+    icon: mdi:clock-end
+    entity_category: config
+    unit_of_measurement: h
+    min_value: 0
+    max_value: 23
+    step: 1
+    mode: box
+    update_interval: 30s
+    lambda: return id(az).field(0x2121, 0x0F80);
+    set_action:
+      - lambda: id(az).field_write(0x2121, 0x0F80, (int) x, 0, 23, 1);
+  - platform: template
+    name: "Ventilation cyclique : intervalle"
+    icon: mdi:timer-sync
+    entity_category: config
+    unit_of_measurement: min
+    min_value: 10
+    max_value: 60
+    step: 5
+    mode: box
+    update_interval: 30s
+    lambda: return id(az).field(0x211F, 0x00FF);
+    set_action:
+      - lambda: id(az).field_write(0x211F, 0x00FF, (int) x, 10, 60, 5);
+  - platform: template
+    name: "Ventilation cyclique : durée minimale"
+    icon: mdi:timer
+    entity_category: config
+    unit_of_measurement: min
+    min_value: 5
+    max_value: 55
+    step: 5
+    mode: box
+    update_interval: 30s
+    lambda: return id(az).field(0x211F, 0xFF00);
+    set_action:
+      - lambda: id(az).field_write(0x211F, 0xFF00, (int) x, 5, 55, 5);
+  - platform: template
+    name: "Free-cooling : température minimale"
+    icon: mdi:thermometer-low
+    entity_category: config
+    unit_of_measurement: "°C"
+    min_value: 18
+    max_value: 30
+    step: 1
+    mode: box
+    update_interval: 30s
+    lambda: return id(az).field(0x2120, 0x00FF);
+    set_action:
+      - lambda: id(az).field_write(0x2120, 0x00FF, (int) x, 18, 30, 1);
+  - platform: template
+    name: "Free-cooling : différentiel"
+    icon: mdi:thermometer-chevron-up
+    entity_category: config
+    unit_of_measurement: "°C"
+    min_value: 0
+    max_value: 10
+    step: 1
+    mode: box
+    update_interval: 30s
+    lambda: return id(az).field(0x2120, 0xFF00);
+    set_action:
+      - lambda: id(az).field_write(0x2120, 0xFF00, (int) x, 0, 10, 1);

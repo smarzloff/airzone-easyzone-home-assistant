@@ -1,0 +1,5 @@
+secrets.yaml
+bridge.ini
+.esphome/
+__pycache__/
+*.jsonl

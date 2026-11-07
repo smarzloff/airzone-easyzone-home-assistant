@@ -1,0 +1,23 @@
+# One Airzone zone, included from airzone.yaml with: vars: {zone: N, name: "..."}
+climate:
+  - platform: airzone
+    zone: ${zone}
+    name: ${name}
+
+sensor:
+  - platform: template
+    name: ${name} température
+    device_class: temperature
+    state_class: measurement
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    update_interval: 30s
+    lambda: return id(az).value(${zone} * 256 + 8, 0.1, -20, 60);
+  - platform: template
+    name: ${name} humidité
+    device_class: humidity
+    state_class: measurement
+    unit_of_measurement: "%"
+    accuracy_decimals: 0
+    update_interval: 30s
+    lambda: return id(az).value(${zone} * 256 + 0x1F, 1, 0, 100);

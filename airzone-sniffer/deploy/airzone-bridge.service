@@ -1,0 +1,14 @@
+[Unit]
+Description=Pont Airzone <-> Home Assistant (MQTT)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/airzone-sniffer
+ExecStart=/usr/bin/python3 /home/pi/airzone-sniffer/airzone_bridge.py --config /home/pi/airzone-sniffer/bridge.ini
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
