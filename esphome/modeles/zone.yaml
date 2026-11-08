@@ -21,3 +21,15 @@ sensor:
     accuracy_decimals: 0
     update_interval: 30s
     lambda: return id(az).value(${zone} * 256 + 0x1F, 1, 0, 100);
+
+# Plain on/off of the zone, in the current system mode (for a simple toggle on the dashboard)
+switch:
+  - platform: template
+    name: ${name} marche
+    icon: mdi:power
+    restore_mode: DISABLED   # never act at boot: the state is read from the bus
+    lambda: return id(az).flag(${zone} * 256, 0x0004);
+    turn_on_action:
+      - lambda: id(az).zone_power(${zone}, true);
+    turn_off_action:
+      - lambda: id(az).zone_power(${zone}, false);

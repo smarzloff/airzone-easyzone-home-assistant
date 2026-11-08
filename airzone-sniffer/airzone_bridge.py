@@ -212,6 +212,10 @@ class Bridge:
         if zone not in self.zones:
             log.warning("commande pour une zone inconnue : %d", zone)
             return
+        if what == "power":
+            log.info("zone %d : %s", zone, "marche" if payload == "ON" else "arrêt")
+            self.bus.call(request("marche" if payload == "ON" else "arret", zone))
+            return None
         if what == "mode" and payload not in ("off", HA_MODES.get(self.zones[zone]["mode"])):
             if payload not in MODE_CODES:
                 log.warning("zone %d : mode %s inconnu", zone, payload)
@@ -336,7 +340,8 @@ class Bridge:
             self.announce(zone, s["name"], mode)
         base = f"{PREFIX}/zone/{zone}"
         action = "off" if not s["on"] else (HA_ACTIONS.get(mode, "idle") if s["demand"] else "idle")
-        for key, value in (("mode", mode if s["on"] else "off"), ("action", action), ("setpoint", s["setpoint"]),
+        for key, value in (("mode", mode if s["on"] else "off"), ("action", action), ("power", "ON" if s["on"] else "OFF"),
+                           ("setpoint", s["setpoint"]),
                            ("temperature", s["temperature"]), ("humidity", s["humidity"])):
             self.mqtt.publish(f"{base}/{key}", str(value), retain=True)
 
@@ -359,6 +364,11 @@ class Bridge:
             "temperature_unit": "C", **avail,
         }
         self.mqtt.publish(f"{DISCOVERY}/climate/airzone_zone{zone}/config", json.dumps(climate), retain=True)
+        power = {  # plain on/off in the current system mode, for a simple toggle on the dashboard
+            "name": "Marche", "unique_id": f"airzone_zone{zone}_power", "device": device, "icon": "mdi:power",
+            "state_topic": f"{base}/power", "command_topic": f"{base}/power/set", **avail,
+        }
+        self.mqtt.publish(f"{DISCOVERY}/switch/airzone_zone{zone}_power/config", json.dumps(power), retain=True)
         for key, label, device_class, unit in (("temperature", "Température", "temperature", "°C"),
                                                ("humidity", "Humidité", "humidity", "%")):
             sensor = {
