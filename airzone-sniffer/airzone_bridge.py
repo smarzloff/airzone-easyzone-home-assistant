@@ -25,6 +25,7 @@ PREFIX = "airzone"
 DISCOVERY = "homeassistant"
 HA_MODES = {"chaud": "heat", "froid": "cool", "ventilation": "fan_only", "déshumidification": "dry", "stop": "off"}
 MIN_SP, MAX_SP = 15.0, 30.0
+PROBE_INTERVAL = 600  # s between two new attempts on zones missed at detection
 HA_ACTIONS = {"heat": "heating", "cool": "cooling", "fan_only": "fan", "dry": "drying"}  # when the zone demands
 
 # Air quality sensor block, identified on 06/11/2026 against the app's readings.
@@ -102,6 +103,8 @@ class Bridge:
         self.interval = cfg.getfloat("bus", "interval", fallback=30)
         self.commands = queue.Queue()
         self.zones = {}          # zone -> last parsed state
+        self.missing = []        # candidate zones that did not answer at detection, probed again later
+        self.next_probe = 0.0
         self.announced = {}      # zone -> HA mode used in the discovery config
         self.failures = 0
         self.iaq = self.iaq_announced = self.system_announced = False
@@ -147,16 +150,32 @@ class Bridge:
         listed = self.cfg.get("zones", "liste", fallback="").strip()
         candidates = [int(z) for z in listed.split(",")] if listed else range(1, 9)
         for zone in candidates:
-            try:
-                state = self.bus.read_zone(zone)
-            except (BusError, ValueError) as e:
-                log.info("zone %d absente (%s)", zone, e)
-                continue
-            if state["name"] or listed:
-                self.zones[zone] = state
-                log.info("zone %d : %s", zone, state["name"] or "(sans nom)")
+            if not self.probe_zone(zone, listed):
+                self.missing.append(zone)
         if not self.zones:
             raise SystemExit("Aucune zone trouvée sur le bus.")
+        self.next_probe = time.monotonic() + PROBE_INTERVAL
+
+    def probe_zone(self, zone, listed, again=False):
+        """Read a candidate zone; keep it if it exists. A miss (bus glitch, radio thermostat not answering) is retried later."""
+        try:
+            state = self.bus.read_zone(zone)
+        except (BusError, ValueError) as e:
+            if not again:
+                log.info("zone %d absente (%s)", zone, e)
+            return False
+        if not (state["name"] or listed):
+            return True  # answers but has no name: not a zone, no need to probe it again
+        self.zones[zone] = state
+        log.info("zone %d%s : %s", zone, " retrouvée" if again else "", state["name"] or "(sans nom)")
+        if again:
+            self.publish(zone, state)
+        return True
+
+    def probe_missing(self):
+        listed = bool(self.cfg.get("zones", "liste", fallback="").strip())
+        self.missing = [z for z in self.missing if not self.probe_zone(z, listed, again=True)]
+        self.next_probe = time.monotonic() + PROBE_INTERVAL
 
     def execute(self, zone, what, payload):
         if zone == "config":
@@ -223,7 +242,7 @@ class Bridge:
         self.mqtt.publish(f"{PREFIX}/iaq/fan", "ON" if values[FAN_REG] & FAN_BIT else "OFF", retain=True)
         zone = min(self.zones)
         level = self.bus.call(request("registres", zone * 256 + LEVEL_OFFSET, LEVEL_COUNT))[3:-2]
-        raw = int.from_bytes(level[0:2], "big")
+        raw = int.from_bytes(level[0:2], "big") & 0x0F  # bit 0x10 = zone on and demanding (capture domo5)
         self.mqtt.publish(f"{PREFIX}/iaq/level", LEVELS.get(raw, f"inconnu ({raw})"), retain=True)
 
     def refresh_system(self):
@@ -364,6 +383,8 @@ class Bridge:
                 self.bus_step(self.refresh_system)
                 if self.iaq:
                     self.bus_step(self.refresh_iaq)
+                if self.missing and time.monotonic() >= self.next_probe:
+                    self.probe_missing()
                 next_poll = time.monotonic() + self.interval
 
 

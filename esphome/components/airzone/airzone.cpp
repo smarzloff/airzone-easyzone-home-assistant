@@ -403,7 +403,8 @@ optional<std::string> Airzone::air_quality_level() const {
   int v = this->reg(this->zones_[0] * 256 + LEVEL_OFFSET);
   if (v < 0)
     return {};
-  switch (v) {
+  // Low nibble only: bit 0x10 is set while the zone is on and demanding (seen in capture domo5)
+  switch (v & 0x0F) {
     case 6: return std::string("bon");
     case 10: return std::string("moyen");
     case 14: return std::string("mauvais");
