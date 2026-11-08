@@ -75,6 +75,11 @@ binary_sensor:
     entity_category: diagnostic
     lambda: return id(az).online();
   - platform: template
+    name: Auto-test des trames
+    device_class: problem
+    entity_category: diagnostic
+    lambda: return !id(az).self_test_ok();
+  - platform: template
     name: Ventilateur du capteur
     device_class: running
     lambda: return id(az).flag(0x2103, 0x0001);

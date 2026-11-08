@@ -44,6 +44,8 @@ class Airzone : public Component, public uart::UARTDevice {
   optional<std::string> system_mode() const;
   optional<std::string> air_quality_level() const;
   bool online() const;
+  // Result of the start-up check of the encoder against the app's captured frames (writes are blocked if false).
+  bool self_test_ok() const { return this->self_test_ok_; }
 
   // ---- commands: the app's own frames (fn 0x16 mask write, fn 06) ----
   void mask_write(uint16_t reg, uint16_t mask, bool on);
@@ -84,6 +86,7 @@ class Airzone : public Component, public uart::UARTDevice {
   uint32_t silence_ms_{400};
   uint32_t poll_interval_ms_{30000};
   bool writes_enabled_{false};
+  bool self_test_ok_{true};
 
   State state_{State::IDLE};
   std::deque<Request> commands_;  // served first

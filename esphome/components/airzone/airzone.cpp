@@ -169,7 +169,8 @@ bool Airzone::self_test_() {
 }
 
 void Airzone::setup() {
-  if (!this->self_test_()) {
+  this->self_test_ok_ = this->self_test_();
+  if (!this->self_test_ok_) {
     ESP_LOGE(TAG, "Auto-test de l'encodeur échoué : écritures désactivées");
     this->writes_enabled_ = false;
   }
@@ -329,7 +330,9 @@ void Airzone::refresh_block_for_(uint16_t reg, uint16_t *start, uint16_t *count)
 
 void Airzone::queue_command_(std::vector<uint8_t> frame, uint16_t refresh_start, uint16_t refresh_count) {
   if (!this->writes_enabled_) {
-    ESP_LOGW(TAG, "Écritures désactivées (writes_enabled: false) : %s non envoyée", format_hex_pretty(frame).c_str());
+    ESP_LOGW(TAG, "Écritures désactivées (%s) : %s non envoyée",
+             this->self_test_ok_ ? "writes_enabled: false" : "auto-test de l'encodeur échoué",
+             format_hex_pretty(frame).c_str());
     return;
   }
   this->commands_.push_back({std::move(frame), refresh_start, refresh_count});
