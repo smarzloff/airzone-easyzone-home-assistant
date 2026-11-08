@@ -79,12 +79,23 @@ binary_sensor:
     device_class: running
     lambda: return id(az).flag(0x2103, 0x0001);
 
-text_sensor:
+# System mode: written like the app does (fn 0x16 on bits 8-11 of a zone, captures domo6 and domo7). Every zone follows.
+select:
   - platform: template
     name: Mode général
     icon: mdi:hvac
     update_interval: 30s
+    options:
+      - stop
+      - chaud
+      - froid
+      - ventilation
+      - déshumidification
     lambda: return id(az).system_mode();
+    set_action:
+      - lambda: id(az).set_system_mode(x);
+
+text_sensor:
   - platform: template
     name: Niveau de qualité
     icon: mdi:air-filter

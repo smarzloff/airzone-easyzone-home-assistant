@@ -25,6 +25,11 @@ PREFIX = "airzone"
 DISCOVERY = "homeassistant"
 HA_MODES = {"chaud": "heat", "froid": "cool", "ventilation": "fan_only", "déshumidification": "dry", "stop": "off"}
 MIN_SP, MAX_SP = 15.0, 30.0
+# Mode codes the webserver writes in bits 8-11 of zone+0 (captures domo6 and domo7). Written on any zone, the code
+# changes the system mode, hence every zone. Cool is written 9 but read back 1.
+MODE_MASK = 0x0F00
+MODE_CODES = {"heat": 0x5, "cool": 0x9, "fan_only": 0x3, "dry": 0x6}
+SYSTEM_CODES = {"stop": 0x0, "chaud": 0x5, "froid": 0x9, "ventilation": 0x3, "déshumidification": 0x6}
 PROBE_INTERVAL = 600  # s between two new attempts on zones missed at detection
 HA_ACTIONS = {"heat": "heating", "cool": "cooling", "fan_only": "fan", "dry": "drying"}  # when the zone demands
 
@@ -129,6 +134,7 @@ class Bridge:
         log.info("connecté au broker MQTT")
         client.subscribe(f"{PREFIX}/zone/+/+/set")
         client.subscribe(f"{PREFIX}/config/+/set")
+        client.subscribe(f"{PREFIX}/system/mode/set")
         client.publish(f"{PREFIX}/status", "online", retain=True)
         self.announced.clear()  # republish discovery after a broker restart
         self.iaq_announced = self.system_announced = False
@@ -137,8 +143,8 @@ class Bridge:
         try:
             parts = msg.topic.split("/")
             payload = msg.payload.decode().strip()
-            if parts[1] == "config" and len(parts) == 4:
-                self.commands.put(("config", parts[2], payload))
+            if parts[1] in ("config", "system") and len(parts) == 4:
+                self.commands.put((parts[1], parts[2], payload))
             else:
                 _, _, zone, what, _ = parts
                 self.commands.put((int(zone), what, payload))
@@ -178,6 +184,13 @@ class Bridge:
         self.next_probe = time.monotonic() + PROBE_INTERVAL
 
     def execute(self, zone, what, payload):
+        if zone == "system":
+            if what != "mode" or payload not in SYSTEM_CODES:
+                log.warning("mode général inconnu : %s", payload)
+                return False
+            log.info("mode général -> %s", payload)
+            self.bus.call(field_write(min(self.zones) * 256, MODE_MASK, SYSTEM_CODES[payload]))
+            return True  # every zone changed mode: re-read them all
         if zone == "config":
             sw = next((s for s in SWITCHES if s[0] == what), None)
             num = next((n for n in NUMBERS if n[0] == what), None)
@@ -199,6 +212,15 @@ class Bridge:
         if zone not in self.zones:
             log.warning("commande pour une zone inconnue : %d", zone)
             return
+        if what == "mode" and payload not in ("off", HA_MODES.get(self.zones[zone]["mode"])):
+            if payload not in MODE_CODES:
+                log.warning("zone %d : mode %s inconnu", zone, payload)
+                return False
+            # Same sequence as the webserver's schedules: mode first, then on.
+            log.info("zone %d : mode général -> %s", zone, payload)
+            self.bus.call(field_write(zone * 256, MODE_MASK, MODE_CODES[payload]))
+            self.bus.call(request("marche", zone))
+            return True  # every zone changed mode: re-read them all
         if what == "mode":
             req = request("arret" if payload == "off" else "marche", zone)
         elif what == "setpoint":
@@ -251,13 +273,17 @@ class Bridge:
         mode = SYSTEM_MODES.get(raw & 0xFF, f"inconnu ({raw})")
         self.mqtt.publish(f"{PREFIX}/system/mode", mode, retain=True)
         if not self.system_announced:
-            sensor = {
-                "name": "Mode général", "unique_id": "airzone_system_mode", "icon": "mdi:hvac",
+            select = {
+                "name": "Mode général", "unique_id": "airzone_system_mode_select", "icon": "mdi:hvac",
                 "device": {"identifiers": ["airzone_system"], "name": "Airzone", "manufacturer": "Airzone",
                            "model": "Centrale Easyzone"},
-                "state_topic": f"{PREFIX}/system/mode", "availability_topic": f"{PREFIX}/status",
+                "options": list(SYSTEM_CODES),
+                "state_topic": f"{PREFIX}/system/mode", "command_topic": f"{PREFIX}/system/mode/set",
+                "availability_topic": f"{PREFIX}/status",
             }
-            self.mqtt.publish(f"{DISCOVERY}/sensor/airzone_system_mode/config", json.dumps(sensor), retain=True)
+            self.mqtt.publish(f"{DISCOVERY}/select/airzone_system_mode/config", json.dumps(select), retain=True)
+            # the read-only sensor of the previous version
+            self.mqtt.publish(f"{DISCOVERY}/sensor/airzone_system_mode/config", "", retain=True)
             self.system_announced = True
 
     def announce_iaq(self):
@@ -320,7 +346,7 @@ class Bridge:
         device = {"identifiers": [f"airzone_zone{zone}"], "name": name or f"Zone {zone}",
                   "manufacturer": "Airzone", "model": f"Zone {zone}"}
         avail = {"availability_topic": f"{PREFIX}/status"}
-        modes = ["off"] + ([system_mode] if system_mode != "off" else [])
+        modes = ["off", "heat", "cool", "fan_only", "dry"]
         climate = {
             "name": None, "unique_id": f"airzone_zone{zone}", "object_id": f"airzone_zone{zone}",
             "device": device,
@@ -346,10 +372,11 @@ class Bridge:
     def bus_step(self, action, *args):
         """Run one bus operation; publish offline after repeated failures instead of crashing."""
         try:
-            action(*args)
+            result = action(*args)
             if self.failures >= 3:
                 self.mqtt.publish(f"{PREFIX}/status", "online", retain=True)
             self.failures = 0
+            return result
         except (BusError, ValueError) as e:
             self.failures += 1
             log.warning("échec bus (%d d'affilée) : %s", self.failures, e)
@@ -366,10 +393,13 @@ class Bridge:
             timeout = max(0.0, next_poll - time.monotonic())
             try:
                 zone, what, payload = self.commands.get(timeout=timeout)
-                self.bus_step(self.execute, zone, what, payload)
+                if self.bus_step(self.execute, zone, what, payload):
+                    next_poll = 0.0  # system mode changed: full poll right after
                 time.sleep(0.5)
                 if zone == "config":
                     self.bus_step(self.refresh_iaq)
+                elif zone == "system":
+                    pass  # the full poll below re-reads every zone
                 else:
                     self.bus_step(self.refresh, zone)
                 continue

@@ -22,7 +22,7 @@ climate::ClimateTraits AirzoneClimate::traits() {
   auto traits = climate::ClimateTraits();
   traits.add_feature_flags(climate::CLIMATE_SUPPORTS_CURRENT_TEMPERATURE | climate::CLIMATE_SUPPORTS_CURRENT_HUMIDITY |
                            climate::CLIMATE_SUPPORTS_ACTION);
-  // The system mode is set on the master thermostat or in the app: a zone can only be switched on in it.
+  // Any mode can be requested from any zone: it changes the system mode, as the app does (domo6, domo7).
   traits.set_supported_modes({climate::CLIMATE_MODE_OFF, climate::CLIMATE_MODE_HEAT, climate::CLIMATE_MODE_COOL,
                               climate::CLIMATE_MODE_FAN_ONLY, climate::CLIMATE_MODE_DRY});
   traits.set_visual_min_temperature(15);
@@ -54,8 +54,17 @@ void AirzoneClimate::control(const climate::ClimateCall &call) {
     } else if (system.has_value() && *system == wanted) {
       this->hub_->zone_power(this->zone_, true);
     } else {
-      ESP_LOGW(TAG, "Zone %u : le mode général ne se change que sur le thermostat maître ou dans l'appli", this->zone_);
-      this->publish_state();  // show the real state again in Home Assistant
+      // Same sequence as the webserver's schedules: mode first, then on. This changes the mode of every zone.
+      uint8_t code = Airzone::MODE_HEAT;
+      switch (wanted) {
+        case climate::CLIMATE_MODE_COOL: code = Airzone::MODE_COOL; break;
+        case climate::CLIMATE_MODE_FAN_ONLY: code = Airzone::MODE_FAN; break;
+        case climate::CLIMATE_MODE_DRY: code = Airzone::MODE_DRY; break;
+        default: break;
+      }
+      ESP_LOGI(TAG, "Zone %u : changement du mode général (code %u)", this->zone_, code);
+      this->hub_->zone_mode(this->zone_, code);
+      this->hub_->zone_power(this->zone_, true);
     }
   }
   if (call.get_target_temperature().has_value())

@@ -133,7 +133,7 @@ static bool answers(const std::vector<uint8_t> &req, const std::vector<uint8_t> 
   return f[2] == req[2] && f[3] == req[3];  // writes: the reply names the same register
 }
 
-// Frames the official webserver sent (captures domo1 and domo3): the encoder must reproduce them exactly.
+// Frames the official webserver sent (captures domo1, domo3, domo6 and domo7): the encoder must reproduce them exactly.
 bool Airzone::self_test_() {
   struct Known {
     std::vector<uint8_t> got;
@@ -145,6 +145,11 @@ bool Airzone::self_test_() {
       {build_mask(0x2121, 0xFF83, 0x0008), "01162121ff8300088c8a"},  // night mode start 2 h
       {build_mask(0x2121, 0xF07F, 0x0500), "01162121f07f05004d38"},  // night mode end 10 h
       {build_mask(0x211F, 0x00FF, 0x1E00), "0116211f00ff1e005ce5"},  // cyclic minimum 30 min
+      {build_mask(0x0400, 0xF0FF, 0x0900), "01160400f0ff0900f2e2"},  // zone 4 mode cool (domo6)
+      {build_mask(0x0400, 0xF0FF, 0x0500), "01160400f0ff0500f7e2"},  // zone 4 mode heat (domo6)
+      {build_mask(0x0200, 0xF0FF, 0x0000), "01160200f0ff0000f4d4"},  // zone 2 mode stop (domo7)
+      {build_mask(0x0200, 0xF0FF, 0x0300), "01160200f0ff0300f424"},  // zone 2 mode fan (domo7)
+      {build_mask(0x0200, 0xF0FF, 0x0600), "01160200f0ff0600f774"},  // zone 2 mode dry (domo7)
       {build_mask(0x2120, 0xFF00, 0x0019), "01162120ff00001980ae"},  // free-cooling min 25 °C
   };
   bool ok = true;
@@ -354,6 +359,37 @@ void Airzone::zone_setpoint(uint8_t zone, float celsius) {
     return;
   }
   this->queue_command_(build_write(zone * 256 + 3, raw), zone * 256, ZONE_COUNT);
+}
+
+void Airzone::zone_mode(uint8_t zone, uint8_t code) {
+  if (code != MODE_STOP && code != MODE_FAN && code != MODE_HEAT && code != MODE_DRY && code != MODE_COOL) {
+    ESP_LOGW(TAG, "Code de mode %u inconnu : rien n'est envoyé", code);
+    return;
+  }
+  this->queue_command_(build_mask(zone * 256, 0xF0FF, code << 8), zone * 256, ZONE_COUNT);
+  this->next_poll_ = millis();  // the system mode changed for every zone: re-read them all once the commands are done
+}
+
+void Airzone::set_system_mode(const std::string &mode) {
+  uint8_t code;
+  if (mode == "stop")
+    code = MODE_STOP;
+  else if (mode == "chaud")
+    code = MODE_HEAT;
+  else if (mode == "froid")
+    code = MODE_COOL;
+  else if (mode == "ventilation")
+    code = MODE_FAN;
+  else if (mode == "déshumidification")
+    code = MODE_DRY;
+  else {
+    ESP_LOGW(TAG, "Mode général inconnu : %s", mode.c_str());
+    return;
+  }
+  if (this->zones_.empty())
+    return;
+  ESP_LOGI(TAG, "Mode général -> %s", mode.c_str());
+  this->zone_mode(this->zones_[0], code);
 }
 
 int Airzone::reg(uint16_t reg) const {

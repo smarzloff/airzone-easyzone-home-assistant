@@ -81,6 +81,11 @@ KNOWN_FIELDS = {
     (0x211F, 0xFF00, 30): "0116211f00ff1e005ce5",   # cyclic minimum 30 min
     (0x2120, 0x00FF, 25): "01162120ff00001980ae",   # free-cooling min 25 °C
     (0x2120, 0xFF00, 7): "0116212000ff07004370",    # free-cooling differential 7
+    (0x0400, 0x0F00, 9): "01160400f0ff0900f2e2",    # zone 4 mode cool, sent by a schedule (domo6)
+    (0x0400, 0x0F00, 5): "01160400f0ff0500f7e2",    # zone 4 mode heat (domo6)
+    (0x0200, 0x0F00, 0): "01160200f0ff0000f4d4",    # zone 2 mode stop, from the app (domo7)
+    (0x0200, 0x0F00, 3): "01160200f0ff0300f424",    # zone 2 mode fan (domo7)
+    (0x0200, 0x0F00, 6): "01160200f0ff0600f774",    # zone 2 mode dry (domo7)
 }
 
 

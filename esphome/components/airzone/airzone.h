@@ -50,6 +50,16 @@ class Airzone : public Component, public uart::UARTDevice {
   void field_write(uint16_t reg, uint16_t mask, int value, int low, int high, int step);
   void zone_power(uint8_t zone, bool on) { this->mask_write(zone * 256, 0x0004, on); }
   void zone_setpoint(uint8_t zone, float celsius);
+  // Mode codes the webserver writes in bits 8-11 of zone+0 (captures domo6 and domo7). Written on any zone, the
+  // code changes the system mode, hence every zone. Cool is written 9 but read back 1.
+  static constexpr uint8_t MODE_STOP = 0x0;
+  static constexpr uint8_t MODE_FAN = 0x3;
+  static constexpr uint8_t MODE_HEAT = 0x5;
+  static constexpr uint8_t MODE_DRY = 0x6;
+  static constexpr uint8_t MODE_COOL = 0x9;
+  void zone_mode(uint8_t zone, uint8_t code);
+  // From the "Mode général" select: stop, chaud, froid, ventilation, déshumidification. Written on the first zone.
+  void set_system_mode(const std::string &mode);
 
   // called after each successful read with (start, count)
   void add_listener(std::function<void(uint16_t, uint16_t)> &&f) { this->listeners_.push_back(std::move(f)); }
