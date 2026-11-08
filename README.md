@@ -112,8 +112,9 @@ Garde-fous du firmware :
 
 ## Ce qu'on obtient dans Home Assistant
 - **Par zone** :
-  - un thermostat : arrêt, ou marche dans le mode général en cours ; consigne de 15 à 30 °C par 0,5 ; état chauffe
-    ou inactif ;
+  - un thermostat : arrêt, chaud, froid, ventilation ou déshumidification (choisir un autre mode que le mode en
+    cours change le **mode général**, donc toutes les zones) ; consigne de 15 à 30 °C par 0,5 ; état chauffe ou
+    inactif ;
   - des capteurs de température et d'humidité.
 - **Qualité de l'air** :
   - mesures : CO2, COV totaux, PM2.5, PM10, humidité, température, pression ;
@@ -123,11 +124,13 @@ Garde-fous du firmware :
   - interrupteurs : LED du capteur, ventilation cyclique, free-cooling, mode nuit, priorité QAI ;
   - valeurs : heures de début et de fin du mode nuit, intervalle (10–60 min) et durée minimale (5–55 min) de la
     ventilation cyclique, température minimale (18–30 °C) et différentiel (0–10) du free-cooling.
-- **Mode général** (chaud, froid, ventilation, déshumidification, stop), en lecture seule, et la connectivité du bus.
+- **Mode général** : un sélecteur stop, chaud, froid, ventilation, déshumidification ; et la connectivité du bus.
 
 **Limites connues**
-- Le **mode général** et l'**eco-adapt** ne se changent pas par ce bus. Quand l'appli les modifie, aucune écriture
-  n'y apparaît. On les lit, on ne les écrit pas.
+- L'**eco-adapt** ne se change pas par ce bus : on lit ses effets (consignes minimale et maximale), sans pouvoir
+  l'écrire.
+- Les **programmations** de l'appli ne sont pas stockées dans la centrale : le webserver envoie l'ordre à l'heure
+  prévue. Les automatisations de Home Assistant font la même chose.
 - L'**indice chiffré** de qualité de l'air de l'appli (0–100) n'est pas sur le bus. Il est probablement calculé par
   le webserver ou le cloud.
 - Le **calendrier** (jours de la ventilation cyclique, mois du free-cooling) est tenu par le webserver. Si on le retirait,
@@ -167,6 +170,11 @@ Commandes de l'appli, reproduites telles quelles :
   `0x0000` (arrêt). L'acquittement `01 16 RR RR 00 00 FF FB` est inhabituel, mais c'est la réponse normale de la
   centrale.
 - **Consigne** : fonction `0x06` sur *zone*+3. La réponse est l'écho de la requête.
+- **Mode** : fonction `0x16` sur les bits 8–11 de *zone*+0, masque ET `0xF0FF`, OU code × 256. Codes écrits :
+  0 stop, 3 ventilation, 5 chaud, 6 déshumidification, 9 froid (relu 1). Écrit sur **n'importe quelle zone**, il
+  change le mode général, donc toutes les zones ; chacune reprend sa consigne mémorisée pour ce mode. L'appli l'écrit
+  seul (changement depuis la zone principale) ; ses programmations envoient mode, marche puis consigne, répétés toutes
+  les 12 s pendant la minute de déclenchement (captures domo6 et domo7).
 - **Réglages** : fonction `0x16`, un bit ou un champ de bits chacun.
 
 | Réglage | Registre | Masque |

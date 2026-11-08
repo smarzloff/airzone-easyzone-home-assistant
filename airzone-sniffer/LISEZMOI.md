@@ -81,14 +81,15 @@ S'il est présent, le capteur de qualité de l'air apparaît comme un appareil �
   (5 à 55 min) de la ventilation cyclique, température minimale (18 à 30 °C) et différentiel (0 à 10) du
   free-cooling. Le pont n'envoie jamais une valeur hors des plages et des pas de l'appli.
 
-Un appareil « Airzone » porte le **mode général** (chaud, froid, ventilation, déshumidification ou stop), en lecture seule.
+Un appareil « Airzone » porte le **mode général** : un sélecteur stop, chaud, froid, ventilation ou déshumidification.
 
 Les zones sont détectées automatiquement (celles qui ont un nom). La centrale stocke les noms sur
 11 caractères : on peut les renommer dans HA.
 
-**Limite :** le mode général (chaud, froid…) se règle sur le thermostat filaire ou dans l'appli. Quand l'appli le
-change, aucune écriture n'apparaît sur ce bus : le pont peut le lire, pas le changer. Une zone ne propose donc dans HA
-que « off » et le mode en cours, et l'allumer ne change pas ce mode. C'est pareil pour l'eco-adapt.
+Le mode est commun à toute l'installation : choisir un autre mode sur le thermostat d'une zone change le mode
+général (toutes les zones suivent), puis allume la zone, comme le font les programmations de l'appli.
+
+**Limite :** l'eco-adapt ne s'écrit pas sur ce bus ; le pont lit seulement ses effets (consignes +1 / +2).
 
 Le pont relit toutes les zones toutes les 30 s (`interval` dans `bridge.ini`). Un ordre donné dans HA part tout de
 suite, puis la zone est relue.
@@ -97,7 +98,7 @@ Topics MQTT :
 - zones : `airzone/zone/N/{mode,setpoint,temperature,humidity}`, commandes sur `…/mode/set` et `…/setpoint/set` ;
 - qualité de l'air : `airzone/iaq/{co2,tvoc,pm25,pm10,humidity,temperature,pressure,level,fan}` ;
 - réglages : `airzone/config/<clé>`, commandes sur `…/set` (`ON`/`OFF` pour les interrupteurs, un nombre pour les autres) ;
-- mode général : `airzone/system/mode` ;
+- mode général : `airzone/system/mode`, commande sur `…/set` (`stop`, `chaud`, `froid`, `ventilation`, `déshumidification`) ;
 - disponibilité : `airzone/status` (`online` ou `offline`).
 
 ## Dépannage
@@ -145,6 +146,11 @@ Commandes de l'appli, reproduites telles quelles par le pont :
 - marche : fonction `0x16` (écriture par masque) sur *zone*+0, masque ET `0xFFFB`, OU `0x0004`. Pour l'arrêt, OU `0x0000`.
   La centrale acquitte par `01 16 RR RR 00 00 FF FB`. C'est inhabituel, mais c'est sa réponse normale.
 - consigne : fonction `06` sur *zone*+3. La réponse est l'écho de la requête.
+- mode : fonction `0x16` sur les bits 8–11 de *zone*+0, masque ET `0xF0FF`, OU code × 256. Codes écrits :
+  0 stop, 3 ventilation, 5 chaud, 6 déshumidification, 9 froid (relu 1). Écrit sur **n'importe quelle zone**, il
+  change le mode général, donc toutes les zones ; chacune reprend sa consigne mémorisée pour ce mode. L'appli l'écrit
+  seul (changement depuis la zone principale) ; ses programmations envoient mode, marche puis consigne, répétés toutes
+  les 12 s pendant la minute de déclenchement (captures domo6 et domo7).
 
 Capteur de qualité de l'air : bloc `0x2100` (33 registres), identifié le 06/11/2026 en comparant avec l'appli.
 Le pont le publie dans HA comme un appareil « Qualité de l'air ».

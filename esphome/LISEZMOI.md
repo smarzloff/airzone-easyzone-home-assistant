@@ -54,15 +54,15 @@ Au démarrage, le composant vérifie que son encodeur reproduit à l'octet près
 Sinon, il désactive lui-même les écritures (« Auto-test de l'encodeur échoué »).
 
 ## Entités
-- par zone : thermostat (arrêt, ou marche dans le mode général en cours ; consigne 15–30 °C par 0,5 ; état
+- par zone : thermostat (arrêt, chaud, froid, ventilation, déshumidification ; consigne 15–30 °C par 0,5 ; état
   chauffe / inactif) et capteurs de température et d'humidité ;
 - qualité de l'air : CO2, COV, PM2.5, PM10, humidité, température, pression, niveau (bon / moyen / mauvais),
   ventilateur du capteur ;
 - réglages : 5 interrupteurs et 6 valeurs, aux plages et pas de l'appli ;
-- mode général (lecture seule) et connectivité du bus (diagnostic).
+- mode général (sélecteur : stop, chaud, froid, ventilation, déshumidification) et connectivité du bus (diagnostic).
 
-Comme avec le Pi, le mode général ne peut pas être changé : demander un autre mode qu'en cours sur un thermostat
-est refusé (message dans le journal).
+Le mode est commun à toute l'installation : choisir un autre mode sur un thermostat de zone change le mode général
+(toutes les zones suivent), puis allume la zone, comme le font les programmations de l'appli.
 
 ## Différences avec le pont du Pi
 - Les zones sont listées dans `airzone.yaml` (pas de détection automatique) : `zones:` et un `packages:` par zone.
