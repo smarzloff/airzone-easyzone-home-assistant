@@ -30,22 +30,19 @@ Le Pi se branche sur **J2**, la rangée de 4 petits trous du webserver, côté g
 - Pour retrouver A et B : disjoncteur coupé et webserver retiré, multimètre en mode continuité (position ▶| •)), bouton
   HOLD/SEL). Une pointe dans un trou de J2, l'autre sur chaque broche du connecteur du webserver. L'ordre des broches est
   celui de la sérigraphie de la carte mère : SHIELD, A, −, B, +.
-- Montage durable, sans souder sur la carte (disjoncteur coupé) :
-  1. couper un morceau de **4 broches** dans une barrette mâle **coudée à 90°**, au pas de 2,54 mm ;
-  2. **avant la pose**, couper à ras les grandes pattes de `+` et `−`, ou les couvrir de gaine thermorétractable.
-     Garder les 4 petites pattes, qui tiennent la barrette ;
-  3. écarter d'un poil une ou deux petites pattes avec une pince plate, pour qu'elles forcent dans les trous ;
-  4. enfoncer les petites pattes dans J2, grandes pattes à plat **vers l'intérieur du webserver** : de l'autre côté, la
-     paroi du boîtier est à quelques millimètres. Tenir la carte par-dessous pendant l'enfoncement ;
-  5. vérifier que les pattes qui dépassent sous le webserver ne touchent aucun composant de la carte mère. Sinon, les
-     raccourcir ou poser un ruban isolant ;
-  6. enfiler des câbles Dupont **mâle-femelle** de deux couleurs : la femelle sur A ou B, la broche mâle vissée dans le
-     bornier de la clé. Noter ici les couleurs utilisées pour A et B ;
-  7. immobiliser les Dupont avec une goutte de colle chaude sur leur plastique, jamais dans les trous ;
-  8. poser le capot sans le visser pour vérifier que rien ne force, puis tester (service arrêté) en bougeant les fils :
-     `python3 domo.py lire 6 --send`.
+- Montage retenu, sans souder sur la carte (disjoncteur coupé) : **un câble Dupont mâle-mâle par fil**.
+  1. enfoncer une broche mâle directement dans le trou de J2 relié à `A` (puis `B`), en deux couleurs ;
+  2. l'immobiliser avec une goutte de colle chaude sur son plastique, jamais dans le trou, et vérifier que rien ne
+     dépasse sous le webserver ni ne touche la carte mère ;
+  3. visser l'autre broche mâle dans le bornier de la clé (ou du Tail485), enfoncée jusqu'au plastique, puis tirer
+     légèrement pour vérifier qu'elle tient. Noter ici les couleurs utilisées pour A et B ;
+  4. éviter les rallonges Dupont bout à bout : chaque raccord est un faux contact possible ;
+  5. poser le capot sans forcer sur les fils, puis tester (service arrêté) : `python3 domo.py lire 6 --send`.
 
-  Si le contact reste instable, souder les 4 petites pattes. La pince à pogo pins ne passe pas, faute de place contre la paroi.
+  Essayé d'abord : une barrette de 4 broches mâles **coudées à 90°** (pas de 2,54 mm), petites pattes forcées dans J2
+  et tenue à la colle chaude, avec des Dupont femelles dessus. Elle n'a pas tenu et a mis le webserver en erreur :
+  je ne suis pas très doué pour ce genre de montage :) . À réserver à qui sait souder proprement les 4 pattes sur la
+  carte (en coupant ou isolant les pattes de `+` et `−`). La pince à pogo pins ne passe pas, faute de place contre la paroi.
 - Le Pi doit être alimenté par un bloc secteur 5 V 2,5 A sur une prise fixe.
 
 ## Installation du pont

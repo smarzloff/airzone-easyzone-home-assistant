@@ -42,7 +42,8 @@ En ligne de commande : `esphome run airzone.yaml`.
    le faisait au début. Un ordre donné dans HA est journalisé (« Écritures désactivées … non envoyée ») mais rien
    n'est envoyé.
 2. Couper le disjoncteur, brancher A → `A`, B → `B` (jamais `+` ou `−` sur A/B), `+` → `12V`, `−` → `GND`.
-   Installation de référence : A et B sur des broches coudées soudées dans J2 du webserver (Dupont femelles), `+` et `−` sur le
+   Installation de référence : A et B par un câble Dupont mâle-mâle chacun (une broche enfoncée dans J2 du webserver et tenue à la
+   colle chaude, l'autre vissée dans le bornier du Tail485), `+` et `−` sur le
    bornier libre AZ2 de la centrale (12 V mesurés ; J2 n'a pas de `+`). Arrêter le pont du Pi (`sudo systemctl stop airzone-bridge`) : deux
    maîtres en plus du webserver, c'est un de trop.
 3. Comparer HA et l'appli pendant un moment : températures, consignes, qualité de l'air, réglages.

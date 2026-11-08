@@ -38,8 +38,7 @@ thermostats ──► centrale Airzone ◄══ bus domotique (Modbus RTU 19200
 - **M5Stack ATOM Lite** (ESP32-PICO) + **M5Stack Tail485** (SKU T002) :
   - transceiver SP485EEN à **direction automatique** : aucune broche de direction ;
   - **convertisseur 9–24 V → 5 V intégré** : l'ATOM est alimenté par le bus lui-même.
-- Quelques fils. Pour un piquage propre sur le webserver, une barrette de **broches mâles coudées** au pas de
-  2,54 mm et des câbles Dupont.
+- Quelques câbles Dupont **mâle-mâle** (un par fil) et de la colle chaude.
 
 > Ce montage a été validé sur **une** installation. D'autres centrales Airzone (AZ6, Innobus, CE6…) utilisent la même
 > logique de zones, mais **pas forcément les mêmes registres** : vérifiez par une écoute avant d'écrire quoi que ce soit.
@@ -51,7 +50,7 @@ Ici, la référence est **le nom des bornes**, pas la couleur des fils.
 
 | Bus Airzone | Tail485 | Où le prendre |
 |---|---|---|
-| `A` | `A` | trou de **J2** du webserver relié à `A` (broche coudée + Dupont femelle) |
+| `A` | `A` | trou de **J2** du webserver relié à `A` (broche Dupont mâle collée, voir ci-dessous) |
 | `B` | `B` | trou de **J2** du webserver relié à `B` |
 | `+` (12 V) | `12V` | bornier **AZ2** de la centrale, borne `+` |
 | `−` | `GND` | bornier **AZ2** de la centrale, borne `−` (pas `SHIELD`) |
@@ -63,6 +62,13 @@ Ici, la référence est **le nom des bornes**, pas la couleur des fils.
 - **J2** est la rangée de 4 petits trous sur le côté du webserver. Seuls deux d'entre eux ont été identifiés, au
   multimètre en continuité : A et B. Aucun n'est relié au `+`. Les bornes AZ1, AZ2 et AZ3 sont en parallèle ;
   AZ2 était libre.
+- **Piquage sur J2** : une broche Dupont **mâle** enfoncée directement dans le trou, maintenue par une goutte de colle
+  chaude sur son plastique (jamais dans le trou). L'autre bout du même câble, mâle aussi, est vissé dans le bornier du
+  Tail485, broche enfoncée jusqu'au plastique. Un seul câble par fil : pas de rallonges Dupont bout à bout, chaque
+  raccord est un faux contact possible.
+  Une barrette de broches coudées collée dans J2 a été essayée d'abord : elle n'a pas tenu et a mis le webserver en
+  erreur (je ne suis pas très doué pour ce genre de montage :) ). Réservée à qui sait souder
+  proprement sur la carte.
 - Le `GND` du Tail485 relié au `−` du bus sert aussi de **référence au signal RS-485**. Ne l'oubliez pas.
 - **Côté Tail485**, c'est un bornier à vis débrochable, dans l'ordre `B A 12V GND`. Câblez-le seul, contrôlez au
   multimètre (≈ 12 V entre `12V` et `GND`, quelques volts seulement entre `A` et `GND`), puis enfichez-le.
