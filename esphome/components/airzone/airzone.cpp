@@ -20,6 +20,20 @@ static const uint16_t ZONE_COUNT = 32, LEVEL_OFFSET = 0x39, LEVEL_COUNT = 2;
 // Every read size above (34, 2, 3, 32) is one the webserver never uses (80, 1, 65, 33, 12): a reply meant
 // for the webserver can never be taken for ours. LEVEL and PRIORITY both read 2, but never at the same time.
 
+// Hex dump of a frame, lowercase ("0103..."), or with sep between bytes for the logs.
+// Local: ESPHome 2026.11 removed format_hex() and format_hex_pretty() from helpers.h.
+static std::string to_hex(const std::vector<uint8_t> &data, char sep = 0) {
+  static const char DIGITS[] = "0123456789abcdef";
+  std::string out;
+  for (size_t i = 0; i < data.size(); i++) {
+    if (sep && i)
+      out += sep;
+    out += DIGITS[data[i] >> 4];
+    out += DIGITS[data[i] & 0x0F];
+  }
+  return out;
+}
+
 static uint16_t crc16(const uint8_t *data, size_t len) {
   uint16_t crc = 0xFFFF;
   for (size_t i = 0; i < len; i++) {
@@ -155,13 +169,13 @@ bool Airzone::self_test_() {
   };
   bool ok = true;
   for (const auto &k : known) {
-    std::string hex = format_hex(k.got);
+    std::string hex = to_hex(k.got);
     if (hex != k.expected) {
       ESP_LOGE(TAG, "Encodeur faux : %s au lieu de %s", hex.c_str(), k.expected);
       ok = false;
     }
   }
-  std::string sp = format_hex(build_write(0x0203, 205));  // setpoint 20.5 °C (prefix only, CRC not captured)
+  std::string sp = to_hex(build_write(0x0203, 205));  // setpoint 20.5 °C (prefix only, CRC not captured)
   if (sp.rfind("0106020300cd", 0) != 0) {
     ESP_LOGE(TAG, "Encodeur de consigne faux : %s", sp.c_str());
     ok = false;
@@ -253,9 +267,9 @@ void Airzone::send_(const Request &req) {
   this->sent_at_ = millis();
   this->state_ = State::WAITING;
   if (req.frame[1] != 0x03) {
-    ESP_LOGI(TAG, "Écriture : %s", format_hex_pretty(req.frame).c_str());
+    ESP_LOGI(TAG, "Écriture : %s", to_hex(req.frame, ' ').c_str());
   } else {
-    ESP_LOGV(TAG, "Lecture : %s", format_hex_pretty(req.frame).c_str());
+    ESP_LOGV(TAG, "Lecture : %s", to_hex(req.frame, ' ').c_str());
   }
 }
 
@@ -275,7 +289,7 @@ void Airzone::finish_() {
     return;
   }
   if ((*answer)[1] & 0x80) {
-    ESP_LOGW(TAG, "Exception Modbus %u pour %s", (*answer)[2], format_hex_pretty(req.frame).c_str());
+    ESP_LOGW(TAG, "Exception Modbus %u pour %s", (*answer)[2], to_hex(req.frame, ' ').c_str());
     this->fail_("exception Modbus");
     return;
   }
@@ -354,7 +368,7 @@ void Airzone::queue_command_(std::vector<uint8_t> frame, uint16_t refresh_start,
   if (!this->writes_enabled_) {
     ESP_LOGW(TAG, "Écritures désactivées (%s) : %s non envoyée",
              this->self_test_ok_ ? "writes_enabled: false" : "auto-test de l'encodeur échoué",
-             format_hex_pretty(frame).c_str());
+             to_hex(frame, ' ').c_str());
     return;
   }
   this->commands_.push_back({std::move(frame), refresh_start, refresh_count});
@@ -454,7 +468,7 @@ optional<std::string> Airzone::system_mode() const {
     case 2: return std::string("chaud");
     case 3: return std::string("ventilation");
     case 6: return std::string("déshumidification");
-    default: return str_sprintf("inconnu (%d)", v);
+    default: return "inconnu (" + std::to_string(v) + ")";
   }
 }
 
@@ -469,7 +483,7 @@ optional<std::string> Airzone::air_quality_level() const {
     case 6: return std::string("bon");
     case 10: return std::string("moyen");
     case 14: return std::string("mauvais");
-    default: return str_sprintf("inconnu (%d)", v);
+    default: return "inconnu (" + std::to_string(v) + ")";
   }
 }
 
