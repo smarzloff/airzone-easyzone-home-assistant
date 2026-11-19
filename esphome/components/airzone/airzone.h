@@ -6,10 +6,12 @@
 #include "esphome/core/component.h"
 #include "esphome/core/optional.h"
 #include "esphome/components/uart/uart.h"
+#include "esphome/components/socket/socket.h"
 
 #include <deque>
 #include <functional>
 #include <map>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -28,6 +30,12 @@ class Airzone : public Component, public uart::UARTDevice {
   void set_silence_ms(uint32_t ms) { this->silence_ms_ = ms; }
   void set_poll_interval_ms(uint32_t ms) { this->poll_interval_ms_ = ms; }
   void set_writes_enabled(bool enabled) { this->writes_enabled_ = enabled; }
+  void set_mirror_port(uint16_t port) { this->mirror_port_ = port; }
+
+  // Bus mirror, for debugging: every byte heard on the bus (and every frame we send) is copied to one TCP client.
+  // Off by default; it never adds anything on the bus. Read with airzone-sniffer/capture_tcp.py.
+  void set_mirror(bool on);
+  bool mirror_enabled() const { return this->mirror_listen_ != nullptr; }
 
   void setup() override;
   void loop() override;
@@ -63,7 +71,7 @@ class Airzone : public Component, public uart::UARTDevice {
   // From the "Mode général" select: stop, chaud, froid, ventilation, déshumidification. Written on the first zone.
   void set_system_mode(const std::string &mode);
 
-  // called after each successful read with (start, count)
+  // called after each successful read with (start, count), and with (0, 0) when the bus is lost and every value forgotten
   void add_listener(std::function<void(uint16_t, uint16_t)> &&f) { this->listeners_.push_back(std::move(f)); }
 
   static std::vector<uint8_t> build_read(uint16_t start, uint16_t count);
@@ -78,6 +86,10 @@ class Airzone : public Component, public uart::UARTDevice {
   void send_(const Request &req);
   void finish_();
   void fail_(const char *why);
+  void forget_();
+  void mirror_bytes_(const uint8_t *data, size_t len);
+  void mirror_loop_();
+  void mirror_drop_client_(const char *why);
   bool store_(const Request &req, const std::vector<uint8_t> &answer);
   void refresh_block_for_(uint16_t reg, uint16_t *start, uint16_t *count) const;
   bool self_test_();
@@ -99,6 +111,13 @@ class Airzone : public Component, public uart::UARTDevice {
   uint32_t next_poll_{0};
   uint32_t last_no_traffic_log_{0};
   uint8_t failures_{0};
+
+  uint16_t mirror_port_{6638};
+  std::unique_ptr<socket::ListenSocket> mirror_listen_;
+  std::unique_ptr<socket::Socket> mirror_client_;
+  std::vector<uint8_t> mirror_buf_;
+  uint32_t mirror_next_accept_{0};
+  uint32_t mirror_dropped_{0};
 
   std::map<uint16_t, uint16_t> regs_;
   std::vector<std::function<void(uint16_t, uint16_t)>> listeners_;

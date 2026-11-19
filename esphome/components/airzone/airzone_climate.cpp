@@ -10,9 +10,20 @@ static const uint16_t ON_BIT = 0x0004;
 static const uint16_t DEMAND_BIT = 0x0080;  // register +9: the zone asks for heat or cold (confirmed 06/11/2026)
 
 void AirzoneClimate::setup() {
+  // Nothing read yet: no temperatures rather than made-up ones. (ESPHome has no "unknown" mode: it stays off.)
+  this->current_temperature = NAN;
+  this->target_temperature = NAN;
   this->hub_->add_listener([this](uint16_t start, uint16_t count) {
-    if (start == this->zone_ * 256)
+    if (count == 0) {  // bus lost: forget the values
+      this->current_temperature = NAN;
+      this->target_temperature = NAN;
+      this->current_humidity = NAN;
+      this->mode = climate::CLIMATE_MODE_OFF;
+      this->action = climate::CLIMATE_ACTION_OFF;
+      this->publish_state();
+    } else if (start == this->zone_ * 256) {
       this->refresh_();
+    }
   });
 }
 

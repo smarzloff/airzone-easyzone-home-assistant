@@ -1,12 +1,22 @@
 # One Airzone zone, included from airzone.yaml with: vars: {zone: N, name: "..."}
+# Each zone is its own device in Home Assistant (an ESPHome sub-device of the ATOM), like with the Pi's bridge:
+# its entities are simply "Marche", "Température", "Humidité", and the device can be put in its own room.
+esphome:
+  devices:
+    - id: zone${zone}
+      name: ${name}
+      relation: child   # zone of the same Airzone system (ESPHome 2026.11+: required, via|child)
+
 climate:
   - platform: airzone
     zone: ${zone}
-    name: ${name}
+    name: None   # the thermostat takes the zone's name
+    device_id: zone${zone}
 
 sensor:
   - platform: template
-    name: ${name} température
+    name: Température
+    device_id: zone${zone}
     device_class: temperature
     state_class: measurement
     unit_of_measurement: "°C"
@@ -14,7 +24,8 @@ sensor:
     update_interval: 30s
     lambda: return id(az).value(${zone} * 256 + 8, 0.1, -20, 60);
   - platform: template
-    name: ${name} humidité
+    name: Humidité
+    device_id: zone${zone}
     device_class: humidity
     state_class: measurement
     unit_of_measurement: "%"
@@ -25,7 +36,8 @@ sensor:
 # Plain on/off of the zone, in the current system mode (for a simple toggle on the dashboard)
 switch:
   - platform: template
-    name: ${name} marche
+    name: Marche
+    device_id: zone${zone}
     icon: mdi:power
     restore_mode: DISABLED   # never act at boot: the state is read from the bus
     lambda: return id(az).flag(${zone} * 256, 0x0004);

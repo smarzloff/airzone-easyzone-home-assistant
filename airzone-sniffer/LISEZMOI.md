@@ -224,6 +224,7 @@ Outils : `capture.py scan|capture` (écoute passive), `decode.py` (lecture d'une
 | `airzone_bridge.py` | le pont MQTT ↔ centrale, lancé en service |
 | `domo.py` | une requête Modbus à la main (`lire`, `marche`, `arret`, `consigne`, `registres`), simulation par défaut |
 | `capture.py` | écoute passive : `scan` (recherche de la vitesse), `capture` (enregistrement JSONL avec marqueurs) |
+| `capture_tcp.py` | même enregistrement JSONL, mais depuis le **miroir du bus** du module ESPHome (interrupteur « Miroir du bus », port TCP 6638) : `python3 capture_tcp.py <IP du module> -o fichier.jsonl` |
 | `modbus.py` | analyse d'une capture du bus domotique (lectures, écritures, registres qui changent) |
 | `decode.py`, `analyze.py`, `inject.py` | analyse et test du bus des thermostats |
 | `deploy/bridge.ini.example`, `deploy/airzone-bridge.service` | configuration et service systemd |

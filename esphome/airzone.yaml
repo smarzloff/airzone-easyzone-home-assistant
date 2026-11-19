@@ -36,6 +36,8 @@ ota:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  # Powered from the bus: no reason to save energy. Power save makes the radio doze and drop connections.
+  power_save_mode: none
   ap:
     ssid: Airzone secours
 
@@ -168,6 +170,17 @@ sensor:
 
 # App settings: one bit each, written by fn 0x16 mask write exactly as the app does
 switch:
+  # Debugging: copies all the bus traffic to TCP port 6638 (airzone-sniffer/capture_tcp.py). Sends nothing on the bus.
+  - platform: template
+    name: Miroir du bus
+    icon: mdi:lan-connect
+    entity_category: diagnostic
+    restore_mode: DISABLED   # closed at boot: opened only on request
+    lambda: return id(az).mirror_enabled();
+    turn_on_action:
+      - lambda: id(az).set_mirror(true);
+    turn_off_action:
+      - lambda: id(az).set_mirror(false);
   - platform: template
     name: LED du capteur
     icon: mdi:led-on

@@ -3,6 +3,7 @@
 #include "esphome/core/helpers.h"
 #include "esphome/core/log.h"
 
+#include <cerrno>
 #include <cmath>
 
 namespace esphome {
@@ -204,7 +205,11 @@ void Airzone::loop() {
     this->seen_traffic_ = true;
     if (this->state_ == State::WAITING)
       this->rx_.push_back(byte);
+    if (this->mirror_client_ != nullptr)
+      this->mirror_bytes_(&byte, 1);
   }
+  if (this->mirror_listen_ != nullptr)
+    this->mirror_loop_();
 
   if (this->state_ == State::WAITING) {
     if (now - this->sent_at_ >= REPLY_WINDOW_MS)
@@ -225,6 +230,7 @@ void Airzone::loop() {
       ESP_LOGW(TAG, "Pas de trafic du webserver : rien n'est envoyé (webserver absent, fils A/B ?)");
       this->last_no_traffic_log_ = now;
       this->failures_ = 3;  // shown as offline
+      this->forget_();
     }
     return;
   }
@@ -241,6 +247,9 @@ void Airzone::send_(const Request &req) {
   this->rx_.clear();
   this->write_array(req.frame);
   this->flush();
+  // The transceiver does not hear itself: copy our own frame, so the mirror shows the whole conversation.
+  if (this->mirror_client_ != nullptr)
+    this->mirror_bytes_(req.frame.data(), req.frame.size());
   this->sent_at_ = millis();
   this->state_ = State::WAITING;
   if (req.frame[1] != 0x03) {
@@ -288,6 +297,19 @@ void Airzone::fail_(const char *why) {
   if (this->failures_ < 255)
     this->failures_++;
   ESP_LOGW(TAG, "Échec bus (%u d'affilée) : %s", this->failures_, why);
+  // A whole poll cycle without a single answer: the values in Home Assistant are no longer the central's.
+  if (this->failures_ == this->zones_.size() + 4)
+    this->forget_();
+}
+
+// Show "unknown" rather than stale values (an "off" that may be wrong). They come back with the next answers.
+void Airzone::forget_() {
+  if (this->regs_.empty())
+    return;
+  ESP_LOGW(TAG, "Bus perdu : les valeurs affichées sont effacées jusqu'au retour de la centrale");
+  this->regs_.clear();
+  for (auto &l : this->listeners_)
+    l(0, 0);
 }
 
 bool Airzone::store_(const Request &req, const std::vector<uint8_t> &answer) {
@@ -452,6 +474,104 @@ optional<std::string> Airzone::air_quality_level() const {
 }
 
 bool Airzone::online() const { return this->failures_ < 3 && this->seen_traffic_; }
+
+// ---- bus mirror --------------------------------------------------------------------------------------------
+static const size_t MIRROR_BUFFER_MAX = 8192;  // ~4 s of bus traffic: a client that falls behind loses bytes, never us
+
+void Airzone::set_mirror(bool on) {
+  if (!on) {
+    if (this->mirror_listen_ != nullptr)
+      ESP_LOGI(TAG, "Miroir du bus : port %u fermé", this->mirror_port_);
+    this->mirror_drop_client_(nullptr);
+    if (this->mirror_listen_ != nullptr)
+      this->mirror_listen_->close();
+    this->mirror_listen_.reset();
+    return;
+  }
+  if (this->mirror_listen_ != nullptr)
+    return;
+  auto sock = socket::socket_listen(AF_INET, SOCK_STREAM, 0);
+  if (sock == nullptr) {
+    ESP_LOGE(TAG, "Miroir du bus : impossible de créer le socket");
+    return;
+  }
+  int enable = 1;
+  sock->setsockopt(SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
+  sock->setblocking(false);
+  struct sockaddr_storage addr;
+  socklen_t len = socket::set_sockaddr_any((struct sockaddr *) &addr, sizeof(addr), this->mirror_port_);
+  if (len == 0 || sock->bind((struct sockaddr *) &addr, len) != 0 || sock->listen(1) != 0) {
+    ESP_LOGE(TAG, "Miroir du bus : port %u indisponible (errno %d)", this->mirror_port_, errno);
+    sock->close();
+    return;
+  }
+  this->mirror_listen_ = std::move(sock);
+  this->mirror_next_accept_ = 0;
+  ESP_LOGI(TAG, "Miroir du bus : port %u ouvert (un seul client à la fois)", this->mirror_port_);
+}
+
+void Airzone::mirror_bytes_(const uint8_t *data, size_t len) {
+  if (this->mirror_buf_.size() + len > MIRROR_BUFFER_MAX) {
+    this->mirror_dropped_ += len;
+    return;
+  }
+  this->mirror_buf_.insert(this->mirror_buf_.end(), data, data + len);
+}
+
+void Airzone::mirror_drop_client_(const char *why) {
+  if (this->mirror_client_ == nullptr)
+    return;
+  if (why != nullptr)
+    ESP_LOGI(TAG, "Miroir du bus : client déconnecté (%s)", why);
+  this->mirror_client_->close();
+  this->mirror_client_.reset();
+  this->mirror_buf_.clear();
+}
+
+void Airzone::mirror_loop_() {
+  const uint32_t now = millis();
+  // A new client replaces the previous one (e.g. a capture restarted on the PC after a network cut).
+  if ((int32_t) (now - this->mirror_next_accept_) >= 0) {
+    this->mirror_next_accept_ = now + 500;
+    struct sockaddr_storage peer;
+    socklen_t peer_len = sizeof(peer);
+    auto client = this->mirror_listen_->accept((struct sockaddr *) &peer, &peer_len);
+    if (client != nullptr) {
+      this->mirror_drop_client_("remplacé par un nouveau client");
+      client->setblocking(false);
+      int nodelay = 1;
+      client->setsockopt(IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+      this->mirror_client_ = std::move(client);
+      this->mirror_dropped_ = 0;
+      ESP_LOGI(TAG, "Miroir du bus : client connecté");
+    }
+  }
+  if (this->mirror_client_ == nullptr)
+    return;
+  if (this->mirror_dropped_ > 0) {
+    ESP_LOGW(TAG, "Miroir du bus : %u octets perdus (client trop lent ou réseau saturé)", (unsigned) this->mirror_dropped_);
+    this->mirror_dropped_ = 0;
+  }
+  // Detect a client that went away: a read returning 0 is a clean close. Anything it sends is ignored.
+  uint8_t scratch[16];
+  ssize_t r = this->mirror_client_->read(scratch, sizeof(scratch));
+  if (r == 0) {
+    this->mirror_drop_client_("fermé par le client");
+    return;
+  }
+  if (r < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+    this->mirror_drop_client_("erreur de lecture");
+    return;
+  }
+  if (this->mirror_buf_.empty())
+    return;
+  ssize_t w = this->mirror_client_->write(this->mirror_buf_.data(), this->mirror_buf_.size());
+  if (w > 0) {
+    this->mirror_buf_.erase(this->mirror_buf_.begin(), this->mirror_buf_.begin() + w);
+  } else if (w < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+    this->mirror_drop_client_("erreur d'envoi");
+  }
+}
 
 }  // namespace airzone
 }  // namespace esphome

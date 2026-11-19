@@ -6,13 +6,14 @@ from esphome.const import CONF_ID
 
 CODEOWNERS = []
 DEPENDENCIES = ["uart"]
-AUTO_LOAD = ["climate"]
+AUTO_LOAD = ["climate", "socket"]
 
 CONF_AIRZONE_ID = "airzone_id"
 CONF_ZONES = "zones"
 CONF_SILENCE = "silence"
 CONF_POLL_INTERVAL = "poll_interval"
 CONF_WRITES_ENABLED = "writes_enabled"
+CONF_MIRROR_PORT = "mirror_port"
 
 airzone_ns = cg.esphome_ns.namespace("airzone")
 Airzone = airzone_ns.class_("Airzone", cg.Component, uart.UARTDevice)
@@ -32,6 +33,8 @@ CONFIG_SCHEMA = (
             ),
             # off by default: first check the readings, then enable the writes
             cv.Optional(CONF_WRITES_ENABLED, default=False): cv.boolean,
+            # TCP port of the bus mirror (debugging, off until switched on from Home Assistant)
+            cv.Optional(CONF_MIRROR_PORT, default=6638): cv.port,
         }
     )
     .extend(cv.COMPONENT_SCHEMA)
@@ -52,3 +55,4 @@ async def to_code(config):
     cg.add(var.set_silence_ms(config[CONF_SILENCE].total_milliseconds))
     cg.add(var.set_poll_interval_ms(config[CONF_POLL_INTERVAL].total_milliseconds))
     cg.add(var.set_writes_enabled(config[CONF_WRITES_ENABLED]))
+    cg.add(var.set_mirror_port(config[CONF_MIRROR_PORT]))

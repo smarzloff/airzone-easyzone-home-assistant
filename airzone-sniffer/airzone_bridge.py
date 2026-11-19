@@ -85,11 +85,14 @@ class Bus:
         self.silence_ms = silence_ms
 
     def call(self, req):
+        # Name the register in the error: the central's exception does not say what it refused.
+        reg = int.from_bytes(req[2:4], "big")
+        where = f"zone {reg >> 8} (0x{reg:04x})" if 1 <= reg >> 8 <= 8 else f"0x{reg:04x}"
         answer, _ = transact(self.ser, req, self.silence_ms)
         if answer is None:
-            raise BusError("pas de réponse de la centrale")
+            raise BusError(f"{where} : pas de réponse de la centrale")
         if answer[1] & 0x80:
-            raise BusError(f"exception Modbus {answer[2]}")
+            raise BusError(f"{where} : exception Modbus {answer[2]}")
         return answer
 
     def read_zone(self, zone):
